@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Decrypt Tester</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.1.1/crypto-js.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: auto;
+      background: #fff;
+      padding: 24px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    h1 {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      margin-top: 16px;
+      font-weight: bold;
+    }
+
+    textarea,
+    input {
+      width: 100%;
+      margin-top: 8px;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-family: monospace;
+    }
+
+    textarea {
+      min-height: 140px;
+      resize: vertical;
+    }
+
+    button {
+      margin-top: 20px;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 6px;
+      background: #2563eb;
+      color: #fff;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1e40af;
+    }
+
+    pre {
+      margin-top: 20px;
+      background: #0f172a;
+      color: #e5e7eb;
+      padding: 16px;
+      border-radius: 6px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .error {
+      color: #dc2626;
+      margin-top: 12px;
+    }
+
+    .section-divider {
+      border: none;
+      border-top: 1px solid #e2e8f0;
+      margin: 28px 0 20px;
+    }
+
+    h2 {
+      font-size: 18px;
+      margin-bottom: 4px;
+      color: #1e293b;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 12px;
+    }
+
+    .btn-vtex {
+      background: #7c3aed;
+    }
+
+    .btn-vtex:hover {
+      background: #5b21b6;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: bold;
+      margin-left: 10px;
+      vertical-align: middle;
+    }
+
+    .status-success {
+      background: #dcfce7;
+      color: #15803d;
+    }
+
+    .status-error {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>🔐 Decrypt Response</h1>
+
+    <label for="key">Secret Key</label>
+    <input id="key" type="text" placeholder="Cole a key aqui" value="ffc95c636e9e151f0153e180c76a9853266cf378" />
+
+    <label for="encrypted">Response criptografado</label>
+    <textarea id="encrypted" placeholder="Cole aqui o response criptografado"></textarea>
+
+    <button onclick="decrypt()">Descriptografar</button>
+
+    <div id="error" class="error"></div>
+
+    <pre id="result"></pre>
+
+    <div id="vtex-auth-section" style="display:none">
+      <hr class="section-divider" />
+      <h2>🔑 Testar Autenticação VTEX</h2>
+      <p class="subtitle">Usa o <code>account</code>, <code>vtexkey</code> e <code>vtextoken</code> dos dados descriptografados.</p>
+      <button class="btn-vtex" onclick="testVtexAuth()">Autenticar via VTEX ID</button>
+      <div id="vtex-error" class="error"></div>
+      <pre id="vtex-result"></pre>
+    </div>
+  </div>
+
+  <script>
+    let decryptedData = null;
+
+    function decrypt() {
+      const encrypted = document.getElementById("encrypted").value.trim();
+      const key = document.getElementById("key").value.trim();
+      const resultEl = document.getElementById("result");
+      const errorEl = document.getElementById("error");
+      const vtexSection = document.getElementById("vtex-auth-section");
+
+      resultEl.textContent = "";
+      errorEl.textContent = "";
+      vtexSection.style.display = "none";
+      decryptedData = null;
+
+      if (!encrypted || !key) {
+        errorEl.textContent = "Informe o response criptografado e a key.";
+        return;
+      }
+
+      try {
+        const bytes = CryptoJS.AES.decrypt(encrypted, key);
+        const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+
+        if (!decrypted) {
+          throw new Error("Falha ao descriptografar. Key incorreta?");
+        }
+
+        try {
+          const json = JSON.parse(decrypted);
+          resultEl.textContent = JSON.stringify(json, null, 2);
+
+          if (json.vtexkey && json.vtextoken) {
+            const keyParts = json.vtexkey.split("-");
+            json._resolvedAccount = json.account || (keyParts.length >= 3 ? keyParts.slice(1, -1).join("-") : null);
+
+            if (json._resolvedAccount) {
+              decryptedData = json;
+              vtexSection.style.display = "block";
+            }
+          }
+        } catch {
+          resultEl.textContent = decrypted;
+        }
+      } catch (err) {
+        errorEl.textContent = "Erro ao descriptografar.";
+        console.error(err);
+      }
+    }
+
+    async function testVtexAuth() {
+      const vtexResultEl = document.getElementById("vtex-result");
+      const vtexErrorEl = document.getElementById("vtex-error");
+
+      vtexResultEl.textContent = "";
+      vtexErrorEl.textContent = "";
+
+      if (!decryptedData) {
+        vtexErrorEl.textContent = "Nenhum dado descriptografado disponível.";
+        return;
+      }
+
+      const { _resolvedAccount: account, vtexkey, vtextoken } = decryptedData;
+      const url = `https://${account}.vtexcommercestable.com.br/api/vtexid/apptoken/login`;
+
+      vtexResultEl.textContent = "Aguardando resposta...";
+
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "X-VTEX-API-AppKey": vtexkey,
+            "X-VTEX-API-AppToken": vtextoken,
+          },
+          body: JSON.stringify({ appkey: vtexkey, apptoken: vtextoken }),
+        });
+
+        const data = await response.json();
+        const isSuccess = data.authStatus === "Success";
+
+        const badge = isSuccess
+          ? `<span class="status-badge status-success">✓ ${data.authStatus}</span>`
+          : `<span class="status-badge status-error">✗ ${data.authStatus ?? "Falha"}</span>`;
+
+        vtexResultEl.innerHTML = badge;
+        vtexResultEl.innerHTML += "\n" + JSON.stringify(data, null, 2);
+      } catch (err) {
+        vtexResultEl.textContent = "";
+        vtexErrorEl.textContent = `Erro na requisição: ${err.message}`;
+        console.error(err);
+      }
+    }
+  </script>
+</body>
+
+</html>
